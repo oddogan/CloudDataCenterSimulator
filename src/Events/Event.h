@@ -4,7 +4,8 @@
 enum class EventType
 {
     SimulationEnd = -1,
-    IncomingRequest,
+    Request,
+    MigrationRequest,
     Exit,
     CPUUtilizationUpdate,
     VMDuplicationRemoval

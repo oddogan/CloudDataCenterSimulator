@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <thread>
+#include <iostream>
 
 class GlobalTimer
 {
@@ -13,16 +14,17 @@ class GlobalTimer
 			return timer;
 		}
 
-		void Start();
+		double GetCurrentTime();
+		double GetInitialTime();
+		void UpdateTime(double time);
 		void SleepFor(double duration_in_sec);
-		double GetTime();
-		void SetSpeedup(double Speedup_) { m_Speedup = Speedup_; };
+		void PrintTime();
 
 	private:
-		GlobalTimer() {};
+		GlobalTimer();
 
-		double m_Speedup;
-		std::chrono::steady_clock::time_point initialTime;
+		double m_InitialTime;
+		double m_CurrentTime;
 };
 
 #endif // GLOBALTIMER_H

@@ -1,24 +1,35 @@
 #ifndef EVENT_TYPES_H
 #define EVENT_TYPES_H
 
+#include <vector>
 #include "Event.h"
+#include "../Machines/Resources.h"
 
 namespace EventTypes
 {
     class Request : public IEvent
     {
         public:
-            Request() {} ;
-            Request(double RequestTime_, double RequestDuration_, unsigned int RequestID_, unsigned int Cores_, double RAM_, double Disk_, double Bandwidth_)
-                : IEvent(RequestTime_), m_RequestDuration(RequestDuration_), m_RequestID(RequestID_), m_Cores(Cores_), m_RAM(RAM_), m_Disk(Disk_), m_Bandwidth(Bandwidth_) {}
+            Request() 
+            {
+                m_utilizationUpdateValues.reserve(1e3);
+            }
             virtual ~Request() {};
-            EventType GetEventType() { return EventType::IncomingRequest; };
+            EventType GetEventType() { return EventType::Request; };
             double m_RequestDuration;
             unsigned int m_RequestID;
-            unsigned int m_Cores;
-            double m_RAM;
-            double m_Disk;
-            double m_Bandwidth;
+            PhysicalMachineResources m_RequestedResources;
+            double m_CurrentUtilization;
+            size_t m_UtilizationUpdateCounter;
+            std::vector<double> m_utilizationUpdateValues;
+    };
+
+    class MigrationRequest : public IEvent
+    {
+        public:
+            MigrationRequest() {}
+            virtual ~MigrationRequest() {};
+            EventType GetEventType() { return EventType::MigrationRequest; };
     };
 
     class SimulationEnd : public IEvent
@@ -35,7 +46,10 @@ namespace EventTypes
 
     class CPUUtilizationUpdate : public IEvent
     {
-        EventType GetEventType() { return EventType::CPUUtilizationUpdate; };
+        public:
+            EventType GetEventType() { return EventType::CPUUtilizationUpdate; };
+            unsigned int m_RequestID;
+            double m_UtilizationValue;
     };
 
     class VMDuplicationRemoval : public IEvent

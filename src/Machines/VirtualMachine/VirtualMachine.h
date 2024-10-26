@@ -1,23 +1,22 @@
 #ifndef VIRTUAL_MACHINE_H
 #define VIRTUAL_MACHINE_H
 
+#include <iostream>
+#include "../Resources.h"
+#include "../../Events/EventTypes.h"
+
+using VIRTUAL_MACHINE_ID = size_t;
+
 class VirtualMachine
 {
     public:
-        VirtualMachine(unsigned int VMID_, unsigned int CoresReqs_, double RAMReq_, double DiskReq_, double BandwidthReq_) 
-        {
-            m_ID = VMID_;
-            m_Cores = CoresReqs_;
-            m_RAM = RAMReq_;
-            m_Disk = DiskReq_;
-            m_Bandwidth = BandwidthReq_;
-        };
-        
-        unsigned int m_ID;
-        unsigned int m_Cores;
-        double m_RAM;
-        double m_Disk;
-        double m_Bandwidth;
+        VirtualMachine() = default;
+        VirtualMachine(VIRTUAL_MACHINE_ID vmID, EventTypes::Request&& request, PhysicalMachineResources resources) : 
+            m_ID(vmID), m_Request(std::move(request)), m_CurrentlyUsedResources(resources) {};
+
+        VIRTUAL_MACHINE_ID m_ID;
+        EventTypes::Request m_Request;
+        PhysicalMachineResources m_CurrentlyUsedResources;
 };
 
 #endif // VIRTUAL_MACHINE_H

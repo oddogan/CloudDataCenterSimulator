@@ -1,64 +1,92 @@
 #include "StatisticsManager.h"
+#include <limits>
 
-void StatisticsManager::StartCollecting(const char* cpOutputFilename)
+StatisticsManager::StatisticsManager()
 {
-    m_fid.open(cpOutputFilename, std::ios::out | std::ios::binary);
 
-    // std::thread has a move assignment operator
-    m_StatisticsThread = std::thread(&StatisticsManager::CollectStatistics, this);
-    m_StatisticsThread.detach();
 }
 
-void StatisticsManager::CollectStatistics()
+void StatisticsManager::StartCollecting(const char* outputFilename)
 {
-    while (m_CloudDataCenter.IsCurrentlyActive())
-    {        
-        double time = GlobalTimer::Instance().GetTime();
-        int count = 0;
-        double sumCPU = 0;
-        double sumRAM = 0;
-        double sumDisk = 0;
-        double sumBW = 0;
+    if (!m_fid.is_open())
+    {
+        m_Filename = outputFilename;
+        m_fid.open(outputFilename, std::ios::out | std::ios::binary);
 
-        for (auto &machine : m_CloudDataCenter.GetPhysicalMachines())
+        if (!m_fid)
         {
-            if (machine.IsPoweredOn())
-            {
-                count++;
-                sumCPU += machine.GetUtilizationCPU();
-                sumRAM += machine.GetUtilizationRAM();
-                sumDisk += machine.GetUtilizationDisk();
-                sumBW += machine.GetUtilizationBW();
-            }
+            std::cout << "[ERROR] Could not open the file: " << outputFilename << std::endl;
+            throw std::runtime_error("Could not open the statistics file!");
+            return;
         }
+    }
+}
 
-        m_fid.write((char*) &time, sizeof(double));
-        m_fid.write((char*) &count, sizeof(int));
+void StatisticsManager::StopCollecting()
+{
+    if (m_fid.is_open())
+    {
+        std::cout << "Saved " << m_DataCounter << " data to file " << m_Filename << std::endl;
+        m_fid.close();
+    }
+}
 
-        if (count == 0) 
+void StatisticsManager::CollectStatistics(MachineRoom* machineRoom)
+{
+    if (m_fid.is_open() == false) return;
+
+    double time = GlobalTimer::Instance().GetCurrentTime();
+    int count = 0;
+    double sumCPU = 0;
+    double sumRAM = 0;
+    double sumDisk = 0;
+    double sumBW = 0;
+    double maxUtilCPU = -1*std::numeric_limits<double>::max();
+    double minUtilCPU = std::numeric_limits<double>::max();
+
+    for (auto &machine : machineRoom->GetMachines())
+    {
+        if (machine.IsPoweredOn())
         {
-            count = 1;
-            sumCPU = 1;
-            sumRAM = 1;
-            sumDisk = 1;
-            sumBW = 1;
-        }
-        else
-        {
-            sumCPU /= count;
-            sumRAM /= count;
-            sumDisk /= count;
-            sumBW /= count;
-        }
+            count++;
 
-        m_fid.write((char*) &sumCPU, sizeof(double));
-        m_fid.write((char*) &sumRAM, sizeof(double));
-        m_fid.write((char*) &sumDisk, sizeof(double));
-        m_fid.write((char*) &sumBW, sizeof(double));
+            maxUtilCPU = std::max(maxUtilCPU, machine.GetUtilizationCPU());
+            minUtilCPU = std::min(minUtilCPU, machine.GetUtilizationCPU());
 
-        GlobalTimer::Instance().SleepFor(1);
+            sumCPU += machine.GetUtilizationCPU();
+            sumRAM += machine.GetUtilizationRAM();
+            sumDisk += machine.GetUtilizationDisk();
+            sumBW += machine.GetUtilizationBW();
+        }
     }
 
-    std::cout << "Saved to file." << std::endl;
-    m_fid.close();
+    m_fid.write((char*) &time, sizeof(double));
+    m_fid.write((char*) &count, sizeof(int));
+
+    if (count == 0)
+    {
+        count = 1;
+        sumCPU = 1;
+        sumRAM = 1;
+        sumDisk = 1;
+        sumBW = 1;
+        maxUtilCPU = 1;
+        minUtilCPU = 1;
+    }
+    else
+    {
+        sumCPU /= count;
+        sumRAM /= count;
+        sumDisk /= count;
+        sumBW /= count;
+    }
+
+    m_fid.write((char*) &sumCPU, sizeof(double));
+    m_fid.write((char*) &sumRAM, sizeof(double));
+    m_fid.write((char*) &sumDisk, sizeof(double));
+    m_fid.write((char*) &sumBW, sizeof(double));
+    m_fid.write((char*) &minUtilCPU, sizeof(double));
+    m_fid.write((char*) &maxUtilCPU, sizeof(double));
+
+    m_DataCounter++;
 }

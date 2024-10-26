@@ -1,29 +1,31 @@
 #ifndef STATISTICSMANAGER_H
 #define STATISTICSMANAGER_H
 
-#include <vector>
 #include <fstream>
 #include <thread>
-#include "../CloudDataCenter/CloudDataCenter.h"
-#include "../EventDispatcher/EventDispatcher.h"
+#include "../MachineRoom/MachineRoom.h"
 #include "../GlobalTimer/GlobalTimer.h"
-#include <mutex>
 
 class StatisticsManager
 {
 	public:
-		StatisticsManager(CloudDataCenter& CloudDataCenter_, EventDispatcher& EventDispatcher_) :
-			m_CloudDataCenter(CloudDataCenter_), m_EventDispatcher(EventDispatcher_) {};
+    	static StatisticsManager& Instance()
+  		{
+ 			static StatisticsManager manager;
+ 			return manager;
+  		}
 
-		void StartCollecting(const char* cpOutputFilename);
+        void CollectStatistics(MachineRoom* machineRoom);
+		void StartCollecting(const char* outputFilename);
+		void StopCollecting();
 
 	private:
-		void CollectStatistics();
+	    StatisticsManager();
 
     	std::fstream m_fid;
 		std::thread m_StatisticsThread;
-		CloudDataCenter& m_CloudDataCenter;
-		EventDispatcher& m_EventDispatcher;
+		std::string m_Filename;
+		size_t m_DataCounter;
 };
 
 #endif // STATISTICSMANAGER_H

@@ -2,44 +2,43 @@
 #define CDC_CLOUDDATACENTER_H
 
 #include <vector>
-#include "../Machines/Machines.h"
-#include "../Machines/PhysicalMachine/PhysicalMachine.h"
 #include "../Events/EventTypes.h"
 #include "../EventDispatcher/EventDispatcher.h"
 #include "../RequestManager/RequestManager.h"
-#include "../Utilities/util.h"
 #include "../GlobalTimer/GlobalTimer.h"
+#include "../MachineRoom/MachineRoom.h"
+#include "../AllocationStrategies/IAllocationStrategy.h"
+#include "../StatisticsManager/StatisticsManager.h"
 
 class CloudDataCenter
 {
 	public:
-		CloudDataCenter(EventDispatcher *EventDispatcher_);
+		CloudDataCenter();
 
-		EventDispatcher *m_EventDispatcher;
-		RequestManager m_RequestManager;
+		// Component setters/getters
+		void SetEventDispatcher(EventDispatcher *eventDispatcher);
+		void SetMachineRoom(MachineRoom *machineRoom);
+		void SetAllocationStrategy(IAllocationStrategy *strategy);
+		void SetRequestManager(RequestManager *requestManager);
+		EventDispatcher* GetEventDispatcher();
+		MachineRoom* GetMachineRoom();
+		IAllocationStrategy* GetAllocationStrategy();
+		RequestManager* GetRequestManager();
 
-		/* Add a new physical machine to the data center */
-		void AddPhysicalMachine(const PhysicalMachine &machine_);
+		// Start the operation
+		bool StartOperation();
 
-		/* Remove a physical machine from the data center */
-		void RemovePhysicalMachine(const unsigned int uiMachineID_);
-
-		/* Get a physical machine's handler via machine ID */
-		PhysicalMachine &GetPhysicalMachine(const unsigned int uiMachineID_);
-
-		/* Get the vector of physical machines */
-		const std::vector<PhysicalMachine> &GetPhysicalMachines() const;
-
-		/* Get the number of physical machines */
-		int GetPhysicalMachineCount() const;
-
-		/* Display info about the data center */
+		// Get information about the data center
 		void DisplayStatus() const;
-
 		void WaitForFinish() { m_MainControllerThread.join(); }
 		bool IsCurrentlyActive() const { return m_IsCurrentlyActive; }
 
 	private:
+    	EventDispatcher* m_EventDispatcher;
+    	MachineRoom* m_MachineRoom;
+    	RequestManager* m_RequestManager;
+        IAllocationStrategy* m_AllocationStrategy;
+
 		/* Main control loop */
 		bool m_IsCurrentlyActive;
 		void MainController();
@@ -47,12 +46,6 @@ class CloudDataCenter
 
 		/* Assignment */
 		void ProcessRequests();
-
-		/* Physical machines */
-		std::vector<PhysicalMachine> m_PhysicalMachines;
-
-		/* Construct the machines */
-		void ConstructMachines(size_t iSmallMachineCount_, size_t iBigMachineCount_);
 };
 
 #endif // CLOUDDATACENTER_H

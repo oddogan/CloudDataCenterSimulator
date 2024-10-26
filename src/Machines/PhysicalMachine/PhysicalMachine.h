@@ -4,115 +4,58 @@
 #include <iostream>
 #include <iomanip>
 #include <vector>
+#include <algorithm>
 #include "../VirtualMachine/VirtualMachine.h"
+#include "../Resources.h"
 
-class PhysicalMachine 
+using PHYSICAL_MACHINE_ID = size_t;
+
+class PhysicalMachine
 {
 	public:
-		PhysicalMachine(const unsigned int uiCoreCount_, const double dRAM_, const double dDisk_, const double dBandwidth_)
-		{
-			m_uiMachineID = m_uiGlobalMachineCount++;
-			m_uiCoreAvailable = m_uiCoreCapacity = uiCoreCount_;
-			m_dRAMAvailable = m_dRAMCapacity = dRAM_;
-			m_dDiskAvailable = m_dDiskCapacity = dDisk_;
-			m_dBandwidthAvailable = m_dBandwidthCapacity = dBandwidth_;
-			m_bIsPoweredOn = false;
-			m_dPowerUsage = 0.0;
-		}
+		PhysicalMachine(PhysicalMachineResources& resourceSpecs, PhysicalMachinePowerSpecs& powerSpecs);
 
 		/* Getters */
-		unsigned int GetMachineID() const { return m_uiMachineID; }
-		unsigned int GetAvailableCoreCount() const { return m_uiCoreAvailable; }
-		double GetAvailableRAM() const { return m_dRAMAvailable; }
-		double GetAvailableDisk() const { return m_dDiskAvailable; }
-		double GetAvailableBandwidth() const { return m_dBandwidthAvailable; }
+		PHYSICAL_MACHINE_ID GetMachineID() const { return m_uiMachineID; }
+		const PhysicalMachineResources& GetResourceSpecs() const { return resourceSpecs; }
+		const PhysicalMachinePowerSpecs& GetPowerSpecs() const { return powerSpecs; }
+		const PhysicalMachineResources& GetAvailableResources() const { return availableResources; }
 
-		double GetUtilizationCPU() const { return (static_cast<double>(m_uiCoreAvailable) / m_uiCoreCapacity); }
-		double GetUtilizationRAM() const { return (m_dRAMAvailable / m_dRAMCapacity); }
-		double GetUtilizationDisk() const { return (m_dDiskAvailable / m_dDiskCapacity); }
-		double GetUtilizationBW() const { return (m_dBandwidthAvailable / m_dBandwidthCapacity); }
+		double GetUtilizationCPU() const { return (1.0 - availableResources.CoreCount / resourceSpecs.CoreCount); }
+		double GetUtilizationRAM() const { return (1.0 - availableResources.RAM / resourceSpecs.RAM); }
+		double GetUtilizationDisk() const { return (1.0 - availableResources.Disk / resourceSpecs.Disk); }
+		double GetUtilizationBW() const { return (1.0 - availableResources.Bandwidth / resourceSpecs.Bandwidth); }
 
-		bool IsPoweredOn() const { return m_bIsPoweredOn; }
+		bool IsPoweredOn() const { return m_IsPoweredOn; }
+		bool GetMigrationStatus() { return m_MigrationStatus; }
+		void SetMigrationStatus(bool status) { m_MigrationStatus = status; }
 
 		/* Setters */
-		void TurnOn() 
-		{ 
-			m_bIsPoweredOn = true; 
-			std::clog << "Physical machine " << m_uiMachineID << " is turned ON!" << std::endl;
-		}
-		void TurnOff() 
-		{ 
-			m_bIsPoweredOn = false; 
-			std::clog << "Physical machine " << m_uiMachineID << " is turned OFF!" << std::endl;
-		}
+		void TurnOn();
+		void TurnOff();
 
-		void AddVM(unsigned int VMID_, unsigned int CoresReqs_, double RAMReq_, double DiskReq_, double BandwidthReq_)
-		{
-			if (IsPoweredOn() == false) TurnOn();
-
-			m_uiCoreAvailable -= CoresReqs_;
-			m_dRAMAvailable -= RAMReq_;
-			m_dDiskAvailable -= DiskReq_;
-			m_dBandwidthAvailable -= BandwidthReq_;
-
-			m_VirtualMachines.emplace_back(VMID_, CoresReqs_, RAMReq_, DiskReq_, BandwidthReq_);
-		}
-
-		void RemoveVM(unsigned int VMID_)
-		{
-			for (auto i = 0; i < m_VirtualMachines.size(); ++i)
-			{
-				if (m_VirtualMachines[i].m_ID == VMID_)
-				{
-					m_uiCoreAvailable += m_VirtualMachines[i].m_Cores;
-					m_dRAMAvailable += m_VirtualMachines[i].m_RAM;
-					m_dDiskAvailable += m_VirtualMachines[i].m_Disk;
-					m_dBandwidthAvailable += m_VirtualMachines[i].m_Bandwidth;
-
-					m_VirtualMachines.erase(m_VirtualMachines.begin() + i);
-					break;
-				}
-			}
-
-			if ((m_uiCoreAvailable == m_uiCoreCapacity) &&
-				(m_dRAMAvailable == m_dRAMCapacity) &&
-				(m_dDiskAvailable == m_dDiskCapacity) &&
-				(m_dBandwidthAvailable == m_dBandwidthCapacity))
-			{
-				TurnOff();
-			}
-
-		}
+		void AddVM(EventTypes::Request& request);
+		void RemoveVM(VIRTUAL_MACHINE_ID vmID);
+		void UpdateVMUtilization(VIRTUAL_MACHINE_ID vmID, double utilizationValue);
+		VirtualMachine* GetVM(VIRTUAL_MACHINE_ID vmID);
 
 		/* Display */
-		void DisplayInfo() const
-		{
-    		std::cout << std::setprecision(2) << std::fixed;
-			std::cout << "Physical Machine ID: " << m_uiMachineID << " -> "
-			<< "CPU: " << m_uiCoreAvailable << "/" << m_uiCoreCapacity << "cores"
-			<< ", RAM: " << m_dRAMAvailable << "/" << m_dRAMCapacity << " GB"
-			<< ", Disk: " << m_dDiskAvailable << "/" << m_dDiskCapacity << " GB"
-			<< ", Bandwidth: " << m_dBandwidthAvailable  << "/" << m_dBandwidthCapacity << " MBps"
-			<< ", Machine is powered " << (m_bIsPoweredOn ? "ON" : "OFF") << std::endl;
-		}
+		void DisplayInfo() const;
 
 	private:
 		/* Identifier */
-		unsigned int m_uiMachineID;
+		PHYSICAL_MACHINE_ID m_uiMachineID;
 
 		/* Attributes of a physical machine */
-		unsigned int m_uiCoreCapacity;
-		double m_dRAMCapacity;
-		double m_dDiskCapacity;
-		double m_dBandwidthCapacity;
+		PhysicalMachineResources resourceSpecs;
+		PhysicalMachinePowerSpecs powerSpecs;
 
 		/* Status */
-		unsigned int m_uiCoreAvailable;
-		double m_dRAMAvailable;
-		double m_dDiskAvailable;
-		double m_dBandwidthAvailable;
-		bool m_bIsPoweredOn;
+		PhysicalMachineResources availableResources;
+		bool m_IsPoweredOn;
 		double m_dPowerUsage;
+		double m_UsageCPU;
+		bool m_MigrationStatus;
 
 		/* Virtual machines inside */
 		std::vector<VirtualMachine> m_VirtualMachines;

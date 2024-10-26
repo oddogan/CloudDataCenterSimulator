@@ -1,96 +1,125 @@
 #include "CloudDataCenter.h"
 
-CloudDataCenter::CloudDataCenter(EventDispatcher* EventDispatcher_) 
+CloudDataCenter::CloudDataCenter()
 {
     /* System is not active yet */
     m_IsCurrentlyActive = false;
+}
 
-    /* Construct the machines in the cloud data center */
-    ConstructMachines(500, 0);
+bool CloudDataCenter::StartOperation()
+{
+    if (m_EventDispatcher == nullptr)
+    {
+        std::cout << "[ERROR] Event dispatcher has not been connected to the CDC yet!\n";
+        throw std::runtime_error("Event dispatcher has not been connected to the CDC yet!");
+        return false;
+    }
 
-    /* Connect to the event dispatcher */
-    m_EventDispatcher = EventDispatcher_;
+    if (m_MachineRoom == nullptr)
+    {
+        std::cout << "[ERROR] Machine room has not been connected to the CDC yet!\n";
+        throw std::runtime_error("Machine room has not been connected to the CDC yet!");
+        return false;
+    }
+
+    if (m_RequestManager == nullptr)
+    {
+        std::cout << "[ERROR] Request manager has not been connected to the CDC yet!\n";
+        throw std::runtime_error("Request manager has not been connected to the CDC yet!");
+        return false;
+    }
 
     /* Start the main control loop */
     // std::thread has a move assignment operator
     m_MainControllerThread = std::thread(&CloudDataCenter::MainController, this);
+    return true;
 }
 
-void CloudDataCenter::AddPhysicalMachine(const PhysicalMachine &machine_)
+void CloudDataCenter::SetEventDispatcher(EventDispatcher *eventDispatcher)
 {
-    m_PhysicalMachines.push_back(machine_);
+    m_EventDispatcher = eventDispatcher;
 }
 
-void CloudDataCenter::RemovePhysicalMachine(const unsigned int uiMachineID_)
+void CloudDataCenter::SetMachineRoom(MachineRoom *machineRoom)
 {
-    for (auto it = m_PhysicalMachines.begin(); it != m_PhysicalMachines.end(); ++it)
-    {
-        if (it->GetMachineID() == uiMachineID_)
-        {
-            m_PhysicalMachines.erase(it);
-            break;
-        }
-    }
+    m_MachineRoom = machineRoom;
 }
 
-PhysicalMachine& CloudDataCenter::GetPhysicalMachine(const unsigned int uiMachineID_)
+void CloudDataCenter::SetAllocationStrategy(IAllocationStrategy *strategy)
 {
-    for (auto& machine : m_PhysicalMachines)
-    {
-        if (machine.GetMachineID() == uiMachineID_)
-        {
-            return machine;
-        }
-    }
-
-    throw std::runtime_error("Physical machine not found.");
+    m_AllocationStrategy = strategy;
 }
 
-const std::vector<PhysicalMachine> &CloudDataCenter::GetPhysicalMachines() const
+void CloudDataCenter::SetRequestManager(RequestManager *requestManager)
 {
-    return m_PhysicalMachines;
+    m_RequestManager = requestManager;
 }
 
-int CloudDataCenter::GetPhysicalMachineCount() const
+EventDispatcher* CloudDataCenter::GetEventDispatcher()
 {
-    return m_PhysicalMachines.size();
+    return m_EventDispatcher;
+}
+
+MachineRoom* CloudDataCenter::GetMachineRoom()
+{
+    return m_MachineRoom;
+}
+
+IAllocationStrategy* CloudDataCenter::GetAllocationStrategy()
+{
+    return m_AllocationStrategy;
+}
+
+RequestManager* CloudDataCenter::GetRequestManager()
+{
+    return m_RequestManager;
 }
 
 void CloudDataCenter::DisplayStatus() const
 {
-    std::cout << "Cloud Data Center - Information" << std::endl;
-    for (auto& machine : m_PhysicalMachines) machine.DisplayInfo();
+    std::cout << "----- Cloud Data Center | Information -----" << std::endl;
+    m_MachineRoom->DisplayInformation();
+    std::cout << "-------------------------------------------" << std::endl;
 }
 
 void CloudDataCenter::MainController()
 {
     m_IsCurrentlyActive = true;
-    IEvent* event;
 
     while (true)
     {
-        event = m_EventDispatcher->GetEvent();
-        if (event == nullptr) continue;
+        bool bCollectStatistics = false;
+        IEvent* event = m_EventDispatcher->GetEvent();
+        EventType type = event->GetEventType();
+        GlobalTimer::Instance().UpdateTime(event->m_EventTime);
 
-        switch (event->GetEventType())
+        switch (type)
         {
             case EventType::SimulationEnd:
             {
-                std::clog << "Simulation end event received!" << std::endl;
+                std::cout << "Simulation end event received!" << std::endl;
+                bCollectStatistics = true;
                 m_IsCurrentlyActive = false;
-                return;
+                break;
             }
-            case EventType::IncomingRequest:
+            case EventType::Request:
             {
                 EventTypes::Request* requestEvent = dynamic_cast<EventTypes::Request*>(event);
-                std::clog << "Incoming request event (ID: " << requestEvent->m_RequestID << ") received!" << std::endl;
+                /*
+                std::cout << "Incoming request event (ID: " << requestEvent->m_RequestID << ") received!" << std::endl;
+                std::cout << "Requested resources: " << requestEvent->m_RequestedResources.CoreCount << " cores, "
+                    << requestEvent->m_RequestedResources.RAM << " GB RAM, "
+                    << requestEvent->m_RequestedResources.Disk << " GB Disk, "
+                    << requestEvent->m_RequestedResources.Bandwidth << " Mbps Bandwidth" << std::endl;
+                    */
 
-                m_RequestManager.AddRequestToBundle(requestEvent);
+                m_RequestManager->AddRequestToBundle(requestEvent);
 
-                if (m_RequestManager.BundleFilled() == true)
+                if (m_RequestManager->BundleFilled() == true)
                 {
                     ProcessRequests();
-                    m_RequestManager.ClearBundle();
+                    m_RequestManager->ClearBundle();
+                    bCollectStatistics = true;
                 };
 
                 break;
@@ -98,98 +127,99 @@ void CloudDataCenter::MainController()
             case EventType::Exit:
             {
                 EventTypes::Exit* exitEvent = dynamic_cast<EventTypes::Exit*>(event);
-                std::clog << "Exit event (ID: " << exitEvent->m_RequestID << ") received!" << std::endl;
+                std::cout << "Exit event (ID: " << exitEvent->m_RequestID << ") received!" << std::endl;
 
-                PhysicalMachine* machine = m_RequestManager.GetVMOwnerPhysicalMachine(exitEvent->m_RequestID);
+                PhysicalMachine* machine = m_RequestManager->GetVMOwnerPhysicalMachine(exitEvent->m_RequestID);
                 if (machine)
                 {
                     machine->RemoveVM(exitEvent->m_RequestID);
-                    std::clog << "VM " << exitEvent->m_RequestID << " is removed." << std::endl;
-                    // machine->DisplayInfo();
+                    std::cout << "VM (ID:" << exitEvent->m_RequestID << ") is removed." << std::endl;
+                    machine->DisplayInfo();
+                }
+                else
+                {
+                    break;
+                    throw std::runtime_error("Cannot find VM in any physical machines, it has not been placed anywhere!");
                 }
 
+                bCollectStatistics = true;
                 break;
             }
             case EventType::CPUUtilizationUpdate:
             {
-                std::clog << "CPU Utilization Update event received!" << std::endl;
+                EventTypes::CPUUtilizationUpdate* updateEvent = dynamic_cast<EventTypes::CPUUtilizationUpdate*>(event);
+                //std::cout << "CPU Utilization Update event (ID: " << updateEvent->m_RequestID << " received!" << std::endl;
+
+                auto PM = m_RequestManager->GetVMOwnerPhysicalMachine(updateEvent->m_RequestID);
+                auto VM = PM->GetVM(updateEvent->m_RequestID);
+                PM->UpdateVMUtilization(updateEvent->m_RequestID, updateEvent->m_UtilizationValue);
+
+                // SLAV may occur, migrate the VM
+                if (PM->GetUtilizationCPU() > 1)
+                {
+                    ProcessRequests();
+                    m_RequestManager->ClearBundle();
+                }
+
+                /* Create the update event */
+                if (VM->m_Request.m_UtilizationUpdateCounter+2 < VM->m_Request.m_utilizationUpdateValues.size())
+                {
+                    EventTypes::CPUUtilizationUpdate* nextUpdateEvent = new EventTypes::CPUUtilizationUpdate();
+                    nextUpdateEvent->m_RequestID = VM->m_Request.m_RequestID;
+                    nextUpdateEvent->m_EventTime = GlobalTimer::Instance().GetCurrentTime() + 300;
+                    nextUpdateEvent->m_UtilizationValue = VM->m_Request.m_utilizationUpdateValues.at(VM->m_Request.m_UtilizationUpdateCounter++);
+                    m_EventDispatcher->AddEvent(nextUpdateEvent);
+                }
+
+                bCollectStatistics = true;
                 break;
             }
             case EventType::VMDuplicationRemoval:
             {
-                std::clog << "VM Duplication Removal event received!" << std::endl;
+                std::cout << "VM Duplication Removal event received!" << std::endl;
                 break;
             }
             default:
             {
-                std::cerr << "Unknown event received!" << std::endl;
+                std::cout << "[ERROR] Unknown event received!" << std::endl;
                 break;
             }
         }
 
+        if (bCollectStatistics) StatisticsManager::Instance().CollectStatistics(m_MachineRoom);
+        GlobalTimer::Instance().PrintTime();
+
         delete event;
+
+        if (type == EventType::SimulationEnd) return;
     }
 }
 
 void CloudDataCenter::ProcessRequests()
 {
-    for (auto &request : m_RequestManager.GetRequestBundle())
+    auto allocationResults = m_AllocationStrategy->Run(m_MachineRoom->GetMachines(), m_RequestManager->GetRequestBundle());
+
+    for (auto& result : allocationResults)
     {
-        bool isPlaced = false;
-    
-        for (auto &machine : m_PhysicalMachines)
+        result.physicalMachine->AddVM(*result.request);
+        m_RequestManager->SetVMOwnerPhysicalMachine(result.request->m_RequestID, *result.physicalMachine);
+
+        /* Create the machine exit event for future */
+        EventTypes::Exit* exitEvent = new EventTypes::Exit();
+        exitEvent->m_EventTime = GlobalTimer::Instance().GetCurrentTime() + result.request->m_RequestDuration;
+        exitEvent->m_RequestID = result.request->m_RequestID;
+        m_EventDispatcher->AddEvent(exitEvent);
+        std::cout << "VM " << result.request->m_RequestID << " is started at PM " << result.physicalMachine->GetMachineID() << ". It will stop at t: " << exitEvent->m_EventTime << std::endl;
+
+        /* Create the update event */
+        if (result.request->m_UtilizationUpdateCounter+2 < result.request->m_utilizationUpdateValues.size())
         {
-            if (machine.GetAvailableCoreCount() < request.m_Cores) continue;
-            if (machine.GetAvailableRAM() < request.m_RAM) continue;
-            if (machine.GetAvailableDisk() < request.m_Disk) continue;
-            if (machine.GetAvailableBandwidth() < request.m_Bandwidth) continue;
-
-            machine.AddVM(request.m_RequestID, request.m_Cores, request.m_RAM, request.m_Disk, request.m_Bandwidth);
-            std::clog << "VM " << request.m_RequestID << " is started. It will stop at t: " << request.m_EventTime + request.m_RequestDuration << std::endl;
-            // machine.DisplayInfo();
-            m_RequestManager.SetVMOwnerPhysicalMachine(request.m_RequestID, machine);
-            isPlaced = true;
-
-            break;
-        }
-
-        if (isPlaced == false)
-        {
-            std::cerr << "VM " << request.m_RequestID << " cannot be placed anywhere!" << std::endl;
-        }
-    }
-}
-
-void CloudDataCenter::ConstructMachines(size_t iSmallMachineCount_, size_t iBigMachineCount_)
-{
-    /* Define the random number generator */
-    static std::mt19937_64 rng(seed);
-
-    /* Add small machines */
-    {
-        using namespace MachineTypes::SmallMachine;
-        std::uniform_int_distribution<int> RandomCoreCount(CPU_Min, CPU_Max);
-        std::uniform_real_distribution<double> RandomRAM(RAM_Min, RAM_Max);
-        std::uniform_real_distribution<double> RandomDisk(Disk_Min, Disk_Max);
-        std::uniform_real_distribution<double> RandomBandwidth(BW_Min, BW_Max);
-        for (int i = 0; i < iSmallMachineCount_; ++i)
-        {
-            PhysicalMachine machine(RandomCoreCount(rng), RandomRAM(rng), RandomDisk(rng), RandomBandwidth(rng));
-            AddPhysicalMachine(machine);
-        }
-    }
-
-    /* Add big machines */
-    {
-        using namespace MachineTypes::BigMachine;
-        std::uniform_int_distribution<int> RandomCoreCount(CPU_Min, CPU_Max);
-        std::uniform_real_distribution<double> RandomRAM(RAM_Min, RAM_Max);
-        std::uniform_real_distribution<double> RandomDisk(Disk_Min, Disk_Max);
-        std::uniform_real_distribution<double> RandomBandwidth(BW_Min, BW_Max);
-        for (int i = 0; i < iBigMachineCount_; ++i)
-        {
-            PhysicalMachine machine(RandomCoreCount(rng), RandomRAM(rng), RandomDisk(rng), RandomBandwidth(rng));
-            AddPhysicalMachine(machine);
+            EventTypes::CPUUtilizationUpdate* updateEvent = new EventTypes::CPUUtilizationUpdate();
+            updateEvent->m_RequestID = result.request->m_RequestID;
+            updateEvent->m_EventTime = GlobalTimer::Instance().GetCurrentTime() + 300;
+            updateEvent->m_UtilizationValue = result.request->m_utilizationUpdateValues.at(result.request->m_UtilizationUpdateCounter++);
+            m_EventDispatcher->AddEvent(updateEvent);
+            std::cout << "VM " << result.request->m_RequestID << " at PM " << result.physicalMachine->GetMachineID() << " will be updated at " << updateEvent->m_EventTime << std::endl;
         }
     }
 }

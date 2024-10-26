@@ -1,13 +1,17 @@
 #include "RequestManager.h"
 
-RequestManager::RequestManager(size_t BundleSize_)
+RequestManager::RequestManager()
 {
-    m_MaxBundleSize = BundleSize_;
-    m_RequestBundle.reserve(2 * m_MaxBundleSize);
+    m_MaxBundleSize = 1;
 }
 
 RequestManager::~RequestManager()
 {
+}
+
+void RequestManager::SetBundleSize(size_t bundleSize)
+{
+    m_MaxBundleSize = bundleSize;
 }
 
 void RequestManager::AddRequestToBundle(EventTypes::Request* request)

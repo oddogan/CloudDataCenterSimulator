@@ -1,19 +1,33 @@
 #include "GlobalTimer.h"
 
-void GlobalTimer::Start()
+GlobalTimer::GlobalTimer()
 {
-    initialTime = std::chrono::high_resolution_clock::now();
+    m_InitialTime = 0;
+    m_CurrentTime = 0;
 }
 
 void GlobalTimer::SleepFor(double duration_in_sec)
 {
-    std::this_thread::sleep_for(std::chrono::duration<double>(duration_in_sec / m_Speedup));
+    std::this_thread::sleep_for(std::chrono::duration<double>(duration_in_sec));
 }
 
-double GlobalTimer::GetTime()
+double GlobalTimer::GetCurrentTime()
 {
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    auto deltaTime = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTime - initialTime).count() * 1e-9;
+    return m_CurrentTime;
+}
 
-    return deltaTime * m_Speedup;
+double GlobalTimer::GetInitialTime()
+{
+    return m_InitialTime;
+}
+
+void GlobalTimer::UpdateTime(double time)
+{
+    if (m_InitialTime == 0) m_InitialTime = time;
+    m_CurrentTime = time;
+}
+
+void GlobalTimer::PrintTime()
+{
+    std::cout << "-- Current time is " << m_CurrentTime << " --\n";
 }

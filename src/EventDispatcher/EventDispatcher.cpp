@@ -1,73 +1,79 @@
 #include "EventDispatcher.h"
+#include <limits>
 
-EventDispatcher::EventDispatcher(const char *cpTraceFilename_, size_t szNumFiles_)
+EventDispatcher::EventDispatcher()
 {
-    m_TraceDatabasePrefix = cpTraceFilename_;
-    m_TraceNumFiles = szNumFiles_;
 }
 
 EventDispatcher::~EventDispatcher()
 {
 }
 
-void EventDispatcher::Start()
+void EventDispatcher::EventReader(const std::vector<std::string>& traceFilenames)
 {
-    // std::thread has a move assignment operator
-    m_DispatcherThread = std::thread(&EventDispatcher::EventReader, this);
-}
-
-void EventDispatcher::EventReader()
-{
-    char cpTraceFile[256];
     std::ifstream fid;
     std::string line;
     std::vector<std::string> values;
+    size_t counter = 0;
+    double latestTime = std::numeric_limits<double>::max();
 
-    for (int iFileInd = 0; iFileInd < m_TraceNumFiles; ++iFileInd)
+    for (auto& filename : traceFilenames)
     {
-        snprintf(cpTraceFile, 256, "%s%d.txt", m_TraceDatabasePrefix.c_str(), iFileInd);
+        fid.open(filename);
 
-        fid.open(cpTraceFile);
+        if (!fid)
+        {
+            std::cout << "[ERROR] Could not open the file: " << filename << std::endl;
+            throw std::runtime_error("Could not open the trace file!");
+            return;
+        }
 
         std::getline(fid, line); // Ignore the header line
 
         while (std::getline(fid, line))
         {
-            std::lock_guard<std::mutex> lock(m_mtxProtectQueue);
+            // std::lock_guard<std::mutex> lock(m_mtxProtectQueue);
 
             values = ParseStringViaDelimiter(line, ",");
 
             EventTypes::Request* event = new EventTypes::Request();
-            event->m_EventTime = atoi(values.at(2).c_str());
+            event->m_EventTime = atof(values.at(2).c_str());
             event->m_RequestID = atoi(values.at(0).c_str());
-            event->m_RequestDuration = atoi(values.at(3).c_str());
-            event->m_Cores = atoi(values.at(4).c_str());
-            event->m_RAM = atoi(values.at(6).c_str());
-            event->m_Bandwidth = atoi(values.at(8).c_str());
-            event->m_Disk = atoi(values.at(7).c_str());
-            m_EventQueue.push(event); 
+            event->m_RequestDuration = atof(values.at(3).c_str());
+            event->m_RequestedResources.CoreCount = atoi(values.at(4).c_str());
+            event->m_RequestedResources.RAM = atof(values.at(6).c_str());
+            event->m_RequestedResources.Bandwidth = atof(values.at(8).c_str());
+            event->m_RequestedResources.Disk = atof(values.at(7).c_str());
+            for (auto i = 10; i < values.size(); ++i)
+                event->m_utilizationUpdateValues.push_back(atof(values.at(i).c_str()));
+            event->m_CurrentUtilization = event->m_utilizationUpdateValues.at(0);
+            event->m_UtilizationUpdateCounter = 1;
+            AddEvent(event);
 
+            #if 0
             /* Create the machine exit event for future */
             EventTypes::Exit* exitEvent = new EventTypes::Exit();
             exitEvent->m_EventTime = event->m_EventTime + event->m_RequestDuration;
             exitEvent->m_RequestID = event->m_RequestID;
-            m_EventQueue.push(exitEvent);
+            AddEvent(exitEvent);
+            latestTime = std::max(latestTime, exitEvent->m_EventTime);
+            #endif
+
+            counter++;
 
             // Notify the request processor about the new event
-            m_condVariable.notify_one();
-            // TODO: Just for testing
-            //std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            // m_condVariable.notify_one();
         }
 
         fid.close();
     }
 
-    /* Stop the cloud data center simulation when all the queue is consumed */
-    while (!m_EventQueue.empty()) {}
+    std::cout << "\rRequests read: " << counter << std::endl;
 
+    /* Stop the cloud data center simulation after all the queue is consumed */
     EventTypes::SimulationEnd* endEvent = new EventTypes::SimulationEnd();
-    endEvent->m_EventTime = GlobalTimer::Instance().GetTime() + 60*60*24;
-    m_EventQueue.push(endEvent);
+    endEvent->m_EventTime = latestTime;
+    AddEvent(endEvent);
     m_condVariable.notify_one();
 }
 
@@ -104,21 +110,21 @@ void EventDispatcher::RandomEventGenerator()
                 {
                     EventTypes::SimulationEnd* event = new EventTypes::SimulationEnd();
                     event->m_EventTime = time;
-                    m_EventQueue.push(event); 
+                    m_EventQueue.push(event);
                     break;
                 }
 
-                case EventType::IncomingRequest:
+                case EventType::Request:
                 {
                     EventTypes::Request* event = new EventTypes::Request();
                     event->m_EventTime = time;
                     event->m_RequestID = reqCounter++;
                     event->m_RequestDuration = duration;
-                    event->m_Cores = 8;
-                    event->m_RAM = 16;
-                    event->m_Bandwidth = 5000;
-                    event->m_Disk = 10000;
-                    m_EventQueue.push(event); 
+                    event->m_RequestedResources.CoreCount = 8;
+                    event->m_RequestedResources.RAM = 16;
+                    event->m_RequestedResources.Disk = 10000;
+                    event->m_RequestedResources.Bandwidth = 5000;
+                    m_EventQueue.push(event);
 
                     /* Create the machine exit event for future */
                     EventTypes::Exit* exitEvent = new EventTypes::Exit();
@@ -137,7 +143,7 @@ void EventDispatcher::RandomEventGenerator()
                     event->m_EventTime = time;
                     size_t VMIndex = std::rand() % activeVMs.size();
                     event->m_RequestID = activeVMs[VMIndex];
-                    m_EventQueue.push(event); 
+                    m_EventQueue.push(event);
                     activeVMs.erase(activeVMs.begin() + VMIndex);
                     break;
                 }
@@ -146,7 +152,7 @@ void EventDispatcher::RandomEventGenerator()
                 {
                     EventTypes::CPUUtilizationUpdate* event = new EventTypes::CPUUtilizationUpdate();
                     event->m_EventTime = time;
-                    m_EventQueue.push(event); 
+                    m_EventQueue.push(event);
                     break;
                 }
 
@@ -154,10 +160,10 @@ void EventDispatcher::RandomEventGenerator()
                 {
                     EventTypes::VMDuplicationRemoval* event = new EventTypes::VMDuplicationRemoval();
                     event->m_EventTime = time;
-                    m_EventQueue.push(event); 
+                    m_EventQueue.push(event);
                     break;
                 }
-            
+
                 default:
                 {
                     break;
@@ -179,25 +185,15 @@ IEvent* EventDispatcher::GetEvent()
 
     m_condVariable.wait(lock, [&]{ return !m_EventQueue.empty(); });
 
-    double currentTime = GlobalTimer::Instance().GetTime();
     IEvent* returnEvent = m_EventQueue.top();
-
-    /* If time has not come yet (except SimulationEnd event) */
-    if (returnEvent->GetEventType() != EventType::SimulationEnd)
-    {
-        if (returnEvent->m_EventTime > currentTime)
-        {
-            return nullptr;
-        }
-    }
-
     m_EventQueue.pop();
+
     return returnEvent;
 }
 
 void EventDispatcher::AddEvent(IEvent *event_)
 {
-    std::unique_lock<std::mutex> lock(m_mtxProtectQueue);
+    // std::unique_lock<std::mutex> lock(m_mtxProtectQueue);
 
     m_EventQueue.push(event_);
 }

@@ -13,6 +13,8 @@ namespace MachineTypes
         constexpr double Disk_Max = 46'000;
         constexpr double BW_Min = 40'000;
         constexpr double BW_Max = 60'000;
+        constexpr double FPGA_Min = 40'000;
+        constexpr double FPGA_Max = 40'000;
     }
 
     namespace BigMachine
@@ -25,6 +27,8 @@ namespace MachineTypes
         constexpr double Disk_Max = 24'576;
         constexpr double BW_Min = 40'000;
         constexpr double BW_Max = 40'000;
+        constexpr double FPGA_Min = 40'000;
+        constexpr double FPGA_Max = 40'000;
     }
 }
 
